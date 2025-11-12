@@ -1,0 +1,25 @@
+# Gradle 构建输出
+/build/
+
+# 编译生成的临时资源
+/generated/
+/outputs/
+/tmp/
+
+# 数据绑定与 Kotlin 缓存
+/.kotlin/
+/.kotlin_metadata/
+/build-cache/
+
+# Gradle 工作目录
+/.gradle/
+
+# Android Studio 捕获文件
+/captures/
+
+# 本地配置
+/local.properties
+
+# 应用日志与调试输出
+/*.log
+/server.log

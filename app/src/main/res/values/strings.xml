@@ -1,0 +1,36 @@
+<resources>
+    <string name="app_name">MessageSend</string>
+    <string name="status_idle">请点击“扫描设备”查找附近的蓝牙设备</string>
+    <string name="button_scan">扫描设备</string>
+    <string name="button_disconnect">断开连接</string>
+    <string name="label_nearby_devices">附近设备</string>
+    <string name="label_empty_devices">尚未发现附近的蓝牙设备</string>
+    <string name="status_scanning">正在扫描附近的蓝牙设备…</string>
+    <string name="status_device_found">找到设备：%1$s</string>
+    <string name="status_connecting">正在连接 %1$s…</string>
+    <string name="status_connected">已连接到 %1$s</string>
+    <string name="status_disconnected">设备已断开</string>
+    <string name="status_uploading">正在上传生命体征数据…</string>
+    <string name="status_upload_success">上传成功：%1$s</string>
+    <string name="status_upload_fail">上传失败：%1$s</string>
+    <string name="toast_upload_failed">上传失败</string>
+    <string name="toast_permission_denied">蓝牙权限被拒绝</string>
+    <string name="device_unknown">未命名设备</string>
+    <string name="status_request_bond">正在请求与 %1$s 配对…</string>
+    <string name="status_notifications_enabled">已启用数据通知</string>
+    <string name="status_scan_stopped">扫描已停止</string>
+    <string name="status_bluetooth_disabled">蓝牙功能未开启</string>
+    <string name="status_bluetooth_unavailable">未检测到蓝牙适配器</string>
+    <string name="status_scanning_in_progress">正在扫描附近设备…</string>
+    <string name="status_ble_scanner_unavailable">无法启动蓝牙低功耗扫描</string>
+    <string name="status_gatt_error">GATT 错误：%1$d</string>
+    <string name="status_discovering_services">连接成功，正在发现服务…</string>
+    <string name="status_service_missing">未找到预期的服务</string>
+    <string name="status_characteristic_missing">缺少通知特征</string>
+    <string name="status_enable_notification_failed">无法开启通知</string>
+    <string name="status_service_discovery_failed">服务发现失败：%1$d</string>
+    <string name="status_scan_failed">扫描失败，错误码：%1$d</string>
+    <string name="status_ignoring_device">忽略设备：%1$s</string>
+    <string name="status_upload_failed_short">数据上传失败</string>
+    <string name="status_upload_success_short">数据上传成功</string>
+</resources>
