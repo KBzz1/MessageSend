@@ -13,3 +13,5 @@
 .externalNativeBuild
 .cxx
 local.properties
+/DataServiceImpl.java
+/MqttManager.java

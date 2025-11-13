@@ -2,15 +2,14 @@ package com.devicedata.messagesend;
 
 import com.devicedata.messagesend.model.VitalsReading;
 
-import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.Locale;
-import java.util.List;
 
 /**
- * 负责构造上传用的 JSON 数据对象，保证字段格式符合后台要求。
+ * 构造上送 JSON（字段与后台约定保持一致）。
+ * 注意：按最新需求，以 250Hz 频率逐点发送波形，不再批量。
  */
 public final class PayloadFactory {
 
@@ -18,7 +17,7 @@ public final class PayloadFactory {
     }
 
     /**
-      当前上送的 JSON 结构示例：
+            当前上送的 JSON 结构示例（单点）：
       {
         "userid": "demo-001",
         "deviceId": "34:81:F4:75:20:70",
@@ -31,19 +30,19 @@ public final class PayloadFactory {
         "bo": "98",
         "hr": "70",
         "temp": "36.5",
-        "ecg": 128,
-        "respWave": 64,
-        "boWaveSamples": [130, 131, 132 ...]
+                "ecg": 128,
+                "respWave": 64,
+                "boWave": 130
       }
      */
-    public static JSONObject buildPayload(VitalsReading reading,
-                                          String userId,
-                                          String deviceId,
-                                          List<Integer> spo2WaveSamples) {
+        public static JSONObject buildPayload(VitalsReading reading,
+                                                                                    String userId,
+                                                                                    String deviceId,
+                                                                                    Integer spo2WavePoint) {
         JSONObject root = new JSONObject();
         try {
-            root.put("userid", userId); // 用户 ID
-            root.put("deviceId", deviceId); // 设备 MAC 地址
+            root.put("userid", userId);        // 用户 ID
+            root.put("deviceId", deviceId);    // 设备 MAC 地址
             root.put("timestamp", reading.timestamp); // 时间戳（毫秒）
 
             if (reading.ecgHeartRate != null) {
@@ -76,17 +75,8 @@ public final class PayloadFactory {
             if (reading.respWave != null) {
                 root.put("respWave", reading.respWave); // 呼吸波形点
             }
-            if (spo2WaveSamples != null && !spo2WaveSamples.isEmpty()) {
-                // 将高频血氧数据打包成数组，避免频繁 HTTP 请求
-                JSONArray samplesArray = new JSONArray();
-                for (Integer sample : spo2WaveSamples) {
-                    if (sample != null) {
-                        samplesArray.put(sample);
-                    }
-                }
-                if (samplesArray.length() > 0) {
-                    root.put("boWaveSamples", samplesArray); // 血氧波形批量样本
-                }
+            if (spo2WavePoint != null) {
+                root.put("boWave", spo2WavePoint); // 血氧波形单点
             }
         } catch (JSONException e) {
             throw new IllegalStateException("Unable to build payload", e);

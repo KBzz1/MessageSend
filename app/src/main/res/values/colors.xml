@@ -2,4 +2,13 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <color name="surface_background">#F5F7FB</color>
+    <color name="panel_background">#FFFFFFFF</color>
+    <color name="panel_border">#14000000</color>
+    <color name="primary_accent">#2F80ED</color>
+    <color name="secondary_accent">#56CCF2</color>
+    <color name="log_background">#111927</color>
+    <color name="log_text">#E6EDF7</color>
+    <color name="log_timestamp">#A0C3FF</color>
 </resources>

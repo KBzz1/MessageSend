@@ -2,75 +2,130 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/surface_background"
     android:orientation="vertical"
-    android:padding="24dp">
+    android:padding="20dp">
 
-    <TextView
-        android:id="@+id/statusText"
+    <LinearLayout
+        android:id="@+id/statusContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/status_idle"
-        android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
+        android:background="@drawable/panel_background"
+        android:orientation="vertical">
 
-    <Button
-        android:id="@+id/scanButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="@string/button_scan" />
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/status_idle"
+            android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+            android:textColor="@android:color/black" />
 
-    <Button
-        android:id="@+id/disconnectButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="@string/button_disconnect" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:orientation="horizontal"
+            android:weightSum="2">
+
+            <Button
+                android:id="@+id/scanButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:background="@drawable/button_primary"
+                android:elevation="2dp"
+                android:includeFontPadding="false"
+                android:text="@string/button_scan"
+                android:textAllCaps="false"
+                android:textColor="@color/panel_background"
+                android:textSize="16sp" />
+
+            <Button
+                android:id="@+id/disconnectButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:background="@drawable/button_secondary"
+                android:elevation="2dp"
+                android:includeFontPadding="false"
+                android:text="@string/button_disconnect"
+                android:textAllCaps="false"
+                android:textColor="@color/panel_background"
+                android:textSize="16sp" />
+        </LinearLayout>
+    </LinearLayout>
 
     <TextView
         android:id="@+id/deviceListLabel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
+        android:layout_marginTop="20dp"
         android:text="@string/label_nearby_devices"
-        android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
+        android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+        android:textColor="@color/primary_accent" />
 
-    <TextView
-        android:id="@+id/emptyView"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/label_empty_devices"
-        android:textAlignment="center"
-        android:visibility="gone" />
-
-    <ListView
-        android:id="@+id/deviceList"
+    <LinearLayout
+        android:id="@+id/deviceListContainer"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="8dp"
-        android:layout_weight="1"
-        android:divider="@android:color/darker_gray"
-        android:dividerHeight="1dp" />
+        android:layout_marginTop="10dp"
+        android:layout_weight="0.9"
+        android:background="@drawable/panel_background"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/emptyView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:text="@string/label_empty_devices"
+            android:textAlignment="center"
+            android:textColor="@android:color/darker_gray"
+            android:visibility="gone" />
+
+        <ListView
+            android:id="@+id/deviceList"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:divider="@android:color/darker_gray"
+            android:dividerHeight="1dp"
+            android:listSelector="@android:color/transparent" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/logLabel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="20dp"
         android:text="@string/label_logs"
-        android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
+        android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+        android:textColor="@color/primary_accent" />
 
-    <TextView
-        android:id="@+id/logText"
+    <LinearLayout
+        android:id="@+id/logContainer"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="8dp"
-        android:layout_weight="1"
-        android:background="@android:color/background_light"
-        android:gravity="top|start"
-        android:padding="12dp"
-        android:scrollbars="vertical"
-        android:textAppearance="@style/TextAppearance.AppCompat.Small"
-        android:textIsSelectable="true" />
+        android:layout_marginTop="10dp"
+        android:layout_weight="1.8"
+        android:background="@drawable/panel_background"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/logText"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/log_background"
+            android:fontFamily="monospace"
+            android:gravity="top|start"
+            android:minLines="8"
+            android:padding="14dp"
+            android:scrollbars="vertical"
+            android:textColor="@color/log_text"
+            android:textIsSelectable="true"
+            android:textSize="13sp" />
+    </LinearLayout>
 
 </LinearLayout>

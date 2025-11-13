@@ -23,7 +23,6 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.devicedata.messagesend.PayloadFactory;
-import com.devicedata.messagesend.NetworkClient;
 import com.devicedata.messagesend.ble.BleManager;
 import com.devicedata.messagesend.model.VitalsReading;
 
@@ -31,37 +30,54 @@ import org.json.JSONObject;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
-/**
- * 应用主界面：负责蓝牙设备扫描、手动选择连接，以及定时上传生命体征数据。
- */
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+// 主页：
+// - 扫描并手动选择蓝牙设备
+// - 以 250Hz 频率逐点发送（4ms 周期），低频字段保持最近值重复，直到更新
+// - 通过 WebSocket 发送到网关 ws://host:port/data/{deviceId}
 public class MainActivity extends AppCompatActivity {
 
     private static final int REQUEST_CODE_PERMISSIONS = 100;
-    private static final long UPLOAD_INTERVAL_MS = 2_000L;
     private static final String TARGET_NAME_PREFIX = "";
     private static final String TARGET_DEVICE_ADDRESS = "34:81:F4:75:20:70";
     private static final String DEFAULT_USER_ID = "demo-001";
     private static final String TARGET_USER_ID = "";
 
     private final ExecutorService networkExecutor = Executors.newSingleThreadExecutor();
+    private ScheduledExecutorService streamExecutor;
+    private ScheduledFuture<?> streamTask;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private BleManager bleManager;
     private TextView statusText;
     private TextView logText;
-    private long lastUploadAt;
+    // 切换为 HTTP 发送客户端
+    private DataHttpClient httpClient;
+    private String currentDeviceId;
     private ArrayAdapter<BluetoothDevice> deviceAdapter;
     private final List<BluetoothDevice> nearbyDevices = new ArrayList<>();
-    private final List<Integer> pendingSpo2Wave = new ArrayList<>();
     private final StringBuilder logBuffer = new StringBuilder();
     private final SimpleDateFormat logTimeFormat = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
+
+    // 最新值缓存（流式发送每 4ms 复用）
+    private volatile Integer latestEcgWave;
+    private volatile Integer latestRespWave;
+    private volatile Integer latestBoWave;
+    private volatile Integer latestEcgHr;
+    private volatile Integer latestRespRate;
+    private volatile Integer latestSystolic;
+    private volatile Integer latestDiastolic;
+    private volatile Integer latestMap;
+    private volatile Integer latestBoPercent;
+    private volatile Integer latestPulseRate;
+    private volatile Double latestTemp;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -104,7 +120,7 @@ public class MainActivity extends AppCompatActivity {
             bleManager.connectTo(device);
         });
 
-        bleManager = new BleManager(this, new BleManager.Listener() {
+    bleManager = new BleManager(this, new BleManager.Listener() {
             @Override
             public void onStatus(String message) {
                 statusText.setText(message);
@@ -116,17 +132,35 @@ public class MainActivity extends AppCompatActivity {
                 String label = device.getName() != null ? device.getName() : device.getAddress();
                 statusText.setText(getString(R.string.status_connected, label));
                 appendLog(getString(R.string.status_connected, label));
+                    // 建立 WebSocket：后端接口格式 /data/{deviceId}（使用设备真实 ID，不再编码）
+                    String deviceId = device.getAddress();
+                    String baseHttp = "http://10.242.20.72:8080"; // 修改为你的网关地址
+                    httpClient = new DataHttpClient(baseHttp, deviceId, new DataHttpClient.Listener() {
+                        @Override public void onLog(String line) { appendLog(line); }
+                        @Override public void onConnected() { appendLog("HTTP 队列已就绪"); }
+                        @Override public void onDisconnected() { appendLog("HTTP 已停止"); }
+                        @Override public void onError(String error) { appendLog(error); }
+                    });
+                    httpClient.connect();
+                    currentDeviceId = deviceId;
+                    startStreaming();
             }
 
             @Override
             public void onDisconnected() {
                 statusText.setText(R.string.status_disconnected);
                 appendLog(getString(R.string.status_disconnected));
+                    if (httpClient != null) {
+                        httpClient.shutdown();
+                        httpClient = null;
+                    }
+                    stopStreaming();
             }
 
             @Override
             public void onVitals(@NonNull android.bluetooth.BluetoothDevice device, @NonNull VitalsReading reading) {
-                sendVitals(device, reading);
+                // 只更新“最新值缓存”，真正的上传由 250Hz 调度器统一完成
+                updateLatestValues(reading);
             }
 
             @Override
@@ -168,41 +202,61 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void sendVitals(android.bluetooth.BluetoothDevice device, VitalsReading reading) {
-        // 收集血氧波形数据，等待下一次批量上传
+    // 更新最新值缓存
+    private void updateLatestValues(VitalsReading reading) {
+        if (reading.ecgWave != null) latestEcgWave = reading.ecgWave;
+        if (reading.respWave != null) latestRespWave = reading.respWave;
         if (reading.spo2Waveform != null && !reading.spo2Waveform.isEmpty()) {
-            pendingSpo2Wave.addAll(reading.spo2Waveform);
+            latestBoWave = reading.spo2Waveform.get(reading.spo2Waveform.size() - 1);
         }
-        long now = System.currentTimeMillis();
-        if (now - lastUploadAt < UPLOAD_INTERVAL_MS) {
-            return;
-        }
-        lastUploadAt = now;
-    statusText.setText(R.string.status_uploading);
-    final List<Integer> waveformBatch = pendingSpo2Wave.isEmpty()
-                ? Collections.emptyList()
-                : new ArrayList<>(pendingSpo2Wave);
-    appendLog("准备上传生命体征数据，血氧样本数：" + waveformBatch.size());
-        pendingSpo2Wave.clear();
-        networkExecutor.execute(() -> {
+        if (reading.ecgHeartRate != null) latestEcgHr = reading.ecgHeartRate;
+        if (reading.respirationRate != null) latestRespRate = reading.respirationRate;
+        if (reading.systolic != null) latestSystolic = reading.systolic;
+        if (reading.diastolic != null) latestDiastolic = reading.diastolic;
+        if (reading.meanArterialPressure != null) latestMap = reading.meanArterialPressure;
+        if (reading.bloodOxygen != null) latestBoPercent = reading.bloodOxygen;
+        if (reading.pulseRate != null) latestPulseRate = reading.pulseRate;
+        if (reading.temperature != null) latestTemp = reading.temperature;
+    }
+
+    private void startStreaming() {
+        stopStreaming();
+        streamExecutor = Executors.newSingleThreadScheduledExecutor();
+        streamTask = streamExecutor.scheduleAtFixedRate(() -> {
+            // 以固定 4ms 周期发送：复用低频字段的最近值
             String userId = TARGET_USER_ID.isEmpty() ? DEFAULT_USER_ID : TARGET_USER_ID;
-            String deviceId = device.getAddress();
-            JSONObject payload = PayloadFactory.buildPayload(reading, userId, deviceId, waveformBatch); // 构造最终上行 JSON 数据
-            NetworkClient.Result result = NetworkClient.postJson(NetworkClient.SERVER_URL, payload);
-            mainHandler.post(() -> {
-                if (result.success) {
-                    statusText.setText(getString(R.string.status_upload_success, result.message));
-                    appendLog(result.message);
-                } else {
-                    statusText.setText(getString(R.string.status_upload_fail, result.message));
-                    Toast.makeText(MainActivity.this, R.string.toast_upload_failed, Toast.LENGTH_SHORT).show();
-                    appendLog(result.message);
-                    if (!waveformBatch.isEmpty()) {
-                        pendingSpo2Wave.addAll(0, waveformBatch);
-                    }
-                }
-            });
-        });
+            String deviceId = currentDeviceId;
+            if (deviceId == null || httpClient == null) return;
+            VitalsReading snapshot = new VitalsReading(
+                    System.currentTimeMillis(),
+                    latestEcgWave,
+                    latestEcgHr,
+                    latestRespRate,
+                    latestSystolic,
+                    latestDiastolic,
+                    latestMap,
+                    latestBoPercent,
+                    latestPulseRate,
+                    latestTemp,
+                    null,
+                    latestRespWave
+            );
+            Integer spo2Point = latestBoWave; // 若低频未更新，则保留上次值
+            JSONObject payload = PayloadFactory.buildPayload(snapshot, userId, deviceId, spo2Point);
+            httpClient.send(payload.toString());
+        }, 0, 4, TimeUnit.MILLISECONDS);
+        appendLog("开始 250Hz 流式发送（4ms 周期）");
+    }
+
+    private void stopStreaming() {
+        if (streamTask != null) {
+            try { streamTask.cancel(false); } catch (Exception ignored) {}
+            streamTask = null;
+        }
+        if (streamExecutor != null) {
+            try { streamExecutor.shutdownNow(); } catch (Exception ignored) {}
+            streamExecutor = null;
+        }
     }
 
     private boolean hasAllPermissions() {
@@ -260,10 +314,13 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         bleManager.shutdown();
         networkExecutor.shutdownNow();
+        stopStreaming();
+        if (httpClient != null) { httpClient.shutdown(); }
         super.onDestroy();
     }
 
     private void addDevice(@NonNull BluetoothDevice device) {
+            if (httpClient != null) httpClient.shutdown();
         for (BluetoothDevice existing : nearbyDevices) {
             if (existing.getAddress().equals(device.getAddress())) {
                 return;

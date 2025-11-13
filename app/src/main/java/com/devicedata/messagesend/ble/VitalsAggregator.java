@@ -20,7 +20,7 @@ class VitalsAggregator {
     private Integer pulseRate;
     private Double temperature;
     private Integer respWave;
-    private final List<Integer> spo2WaveBuffer = new ArrayList<>();
+    // 不再批量缓存血氧波形，按需逐点发出
 
     VitalsReading update(int type, byte[] body) {
         switch (type) {
@@ -49,22 +49,45 @@ class VitalsAggregator {
                 return snapshot();
             case 0xFE:
                 if (body.length > 1) {
-                    // 血氧波形为高频数据，逐点写入缓存
-                    spo2WaveBuffer.add(body[1] & 0xFF);
+                    // 直接构造仅包含单点血氧波形的 Reading
+                    List<Integer> one = new ArrayList<>(1);
+                    one.add(body[1] & 0xFF);
+                    return new VitalsReading(System.currentTimeMillis(),
+                            null, // ecgWave
+                            null, // ecgHeartRate
+                            null, // respirationRate
+                            null, // systolic
+                            null, // diastolic
+                            null, // map
+                            null, // bloodOxygen (饱和度为低频字段，单点发送由上层按最近值复用)
+                            null, // pulseRate
+                            null, // temperature
+                            one,  // spo2Waveform 单点
+                            null  // respWave
+                    );
                 }
                 return null;
             case 0xFF:
                 respWave = body.length > 1 ? body[1] & 0xFF : null;
-                return null;
+                // 呼吸波也可视为波形，直接返回以便上层获取最新值
+                return new VitalsReading(System.currentTimeMillis(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        respWave);
             default:
                 return null;
         }
     }
 
     private VitalsReading snapshot() {
-    // 截取血氧波形缓存，随同本次快照上传
-    List<Integer> spo2Waveform = spo2WaveBuffer.isEmpty() ? null : new ArrayList<>(spo2WaveBuffer);
-    spo2WaveBuffer.clear();
     return new VitalsReading(System.currentTimeMillis(),
                 ecgWave,
                 ecgHeartRate,
@@ -75,7 +98,7 @@ class VitalsAggregator {
                 bloodOxygen,
                 pulseRate,
                 temperature,
-        spo2Waveform,
+        null,
                 respWave);
     }
 }

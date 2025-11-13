@@ -315,7 +315,8 @@ public class BleManager {
         }
         int type = body[0] & 0xFF;
         VitalsReading reading = aggregator.update(type, body);
-        if (reading != null && !reading.isWaveformOnly()) {
+        if (reading != null) {
+            // 现在包括波形-only 的 Reading 也会回调，供上层以 250Hz 复用低频字段后统一上送
             emitVitals(reading);
         }
     }
