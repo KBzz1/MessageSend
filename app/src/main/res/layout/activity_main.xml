@@ -52,4 +52,25 @@
         android:divider="@android:color/darker_gray"
         android:dividerHeight="1dp" />
 
+    <TextView
+        android:id="@+id/logLabel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/label_logs"
+        android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
+
+    <TextView
+        android:id="@+id/logText"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1"
+        android:background="@android:color/background_light"
+        android:gravity="top|start"
+        android:padding="12dp"
+        android:scrollbars="vertical"
+        android:textAppearance="@style/TextAppearance.AppCompat.Small"
+        android:textIsSelectable="true" />
+
 </LinearLayout>

@@ -58,13 +58,13 @@ dependencies {
 `MainActivity` 中的 `requiredPermissions()` 方法已经根据 Android 版本自动申请 `BLUETOOTH_SCAN`、`BLUETOOTH_CONNECT` 与定位权限。如目标项目使用不同的权限模型（例如自定义弹窗、权限代理库等），请同步调整。
 
 
-## 7. 调试与验证
+## 6. 调试与验证
 
 1. 在目标项目中运行应用，确认 UI、权限申请与扫描流程正常。
 2. 已连接蓝牙设备后，监测 `statusText` 文本或日志输出验证连接状态。
 3. 使用 `server.py` 可验证 JSON 数据格式，或者发到 *康迪* 的后端验证（`http://10.242.20.72:8080/surgery`）。
 
-## 8. 其他注意事项
+## 7. 其他注意事项
 
 - 如项目使用 Kotlin，请将 Java 类迁移时确保兼容性或转换为 Kotlin。
 - 若使用混淆（ProGuard/R8），请添加规则保留关键类或字段，避免 JSON 序列化失败。

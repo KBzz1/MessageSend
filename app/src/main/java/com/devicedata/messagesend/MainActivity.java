@@ -7,6 +7,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.method.ScrollingMovementMethod;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
@@ -28,9 +29,12 @@ import com.devicedata.messagesend.model.VitalsReading;
 
 import org.json.JSONObject;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -51,10 +55,13 @@ public class MainActivity extends AppCompatActivity {
 
     private BleManager bleManager;
     private TextView statusText;
+    private TextView logText;
     private long lastUploadAt;
     private ArrayAdapter<BluetoothDevice> deviceAdapter;
     private final List<BluetoothDevice> nearbyDevices = new ArrayList<>();
     private final List<Integer> pendingSpo2Wave = new ArrayList<>();
+    private final StringBuilder logBuffer = new StringBuilder();
+    private final SimpleDateFormat logTimeFormat = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,14 +69,18 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         statusText = findViewById(R.id.statusText);
+        logText = findViewById(R.id.logText);
+        logText.setMovementMethod(new ScrollingMovementMethod());
         Button scanButton = findViewById(R.id.scanButton);
         Button disconnectButton = findViewById(R.id.disconnectButton);
-    ListView deviceList = findViewById(R.id.deviceList);
-    TextView emptyView = findViewById(R.id.emptyView);
-    deviceList.setEmptyView(emptyView);
+        ListView deviceList = findViewById(R.id.deviceList);
+        TextView emptyView = findViewById(R.id.emptyView);
+        deviceList.setEmptyView(emptyView);
 
-    // 适配器用于展示附近扫描到的蓝牙设备
-    deviceAdapter = new ArrayAdapter<BluetoothDevice>(this, android.R.layout.simple_list_item_2, android.R.id.text1, nearbyDevices) {
+        appendLog("应用已启动，等待操作");
+
+        // 适配器用于展示附近扫描到的蓝牙设备
+        deviceAdapter = new ArrayAdapter<BluetoothDevice>(this, android.R.layout.simple_list_item_2, android.R.id.text1, nearbyDevices) {
             @NonNull
             @Override
             public View getView(int position, @Nullable View convertView, @NonNull ViewGroup parent) {
@@ -89,6 +100,7 @@ public class MainActivity extends AppCompatActivity {
         deviceList.setOnItemClickListener((parent, view, position, id) -> {
             BluetoothDevice device = nearbyDevices.get(position);
             statusText.setText(getString(R.string.status_connecting, displayName(device)));
+            appendLog(getString(R.string.status_connecting, displayName(device)));
             bleManager.connectTo(device);
         });
 
@@ -96,17 +108,20 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onStatus(String message) {
                 statusText.setText(message);
+                appendLog(message);
             }
 
             @Override
             public void onConnected(@NonNull android.bluetooth.BluetoothDevice device) {
                 String label = device.getName() != null ? device.getName() : device.getAddress();
                 statusText.setText(getString(R.string.status_connected, label));
+                appendLog(getString(R.string.status_connected, label));
             }
 
             @Override
             public void onDisconnected() {
                 statusText.setText(R.string.status_disconnected);
+                appendLog(getString(R.string.status_disconnected));
             }
 
             @Override
@@ -118,6 +133,7 @@ public class MainActivity extends AppCompatActivity {
             public void onError(String error) {
                 statusText.setText(error);
                 Toast.makeText(MainActivity.this, error, Toast.LENGTH_SHORT).show();
+                appendLog(error);
             }
 
             @Override
@@ -137,6 +153,7 @@ public class MainActivity extends AppCompatActivity {
             nearbyDevices.clear();
             deviceAdapter.notifyDataSetChanged();
             statusText.setText(R.string.status_scanning);
+            appendLog(getString(R.string.status_scanning));
             if (hasAllPermissions()) {
                 bleManager.startScan();
             } else {
@@ -147,12 +164,13 @@ public class MainActivity extends AppCompatActivity {
         disconnectButton.setOnClickListener(v -> {
             bleManager.disconnect();
             statusText.setText(R.string.status_disconnected);
+            appendLog(getString(R.string.status_disconnected));
         });
     }
 
     private void sendVitals(android.bluetooth.BluetoothDevice device, VitalsReading reading) {
-    // 收集血氧波形数据，等待下一次批量上传
-    if (reading.spo2Waveform != null && !reading.spo2Waveform.isEmpty()) {
+        // 收集血氧波形数据，等待下一次批量上传
+        if (reading.spo2Waveform != null && !reading.spo2Waveform.isEmpty()) {
             pendingSpo2Wave.addAll(reading.spo2Waveform);
         }
         long now = System.currentTimeMillis();
@@ -160,10 +178,11 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         lastUploadAt = now;
-        statusText.setText(R.string.status_uploading);
+    statusText.setText(R.string.status_uploading);
     final List<Integer> waveformBatch = pendingSpo2Wave.isEmpty()
                 ? Collections.emptyList()
                 : new ArrayList<>(pendingSpo2Wave);
+    appendLog("准备上传生命体征数据，血氧样本数：" + waveformBatch.size());
         pendingSpo2Wave.clear();
         networkExecutor.execute(() -> {
             String userId = TARGET_USER_ID.isEmpty() ? DEFAULT_USER_ID : TARGET_USER_ID;
@@ -173,9 +192,11 @@ public class MainActivity extends AppCompatActivity {
             mainHandler.post(() -> {
                 if (result.success) {
                     statusText.setText(getString(R.string.status_upload_success, result.message));
+                    appendLog(result.message);
                 } else {
                     statusText.setText(getString(R.string.status_upload_fail, result.message));
                     Toast.makeText(MainActivity.this, R.string.toast_upload_failed, Toast.LENGTH_SHORT).show();
+                    appendLog(result.message);
                     if (!waveformBatch.isEmpty()) {
                         pendingSpo2Wave.addAll(0, waveformBatch);
                     }
@@ -203,6 +224,7 @@ public class MainActivity extends AppCompatActivity {
         }
         if (!toRequest.isEmpty()) {
             ActivityCompat.requestPermissions(this, toRequest.toArray(new String[0]), REQUEST_CODE_PERMISSIONS);
+            appendLog("请求蓝牙相关权限");
         }
     }
 
@@ -226,8 +248,10 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             if (hasAllPermissions()) {
                 bleManager.startScan();
+                appendLog("权限已授予，继续扫描设备");
             } else {
                 Toast.makeText(this, R.string.toast_permission_denied, Toast.LENGTH_SHORT).show();
+                appendLog(getString(R.string.toast_permission_denied));
             }
         }
     }
@@ -248,10 +272,39 @@ public class MainActivity extends AppCompatActivity {
         nearbyDevices.add(device);
         deviceAdapter.notifyDataSetChanged();
         statusText.setText(getString(R.string.status_device_found, displayName(device)));
+        appendLog(getString(R.string.status_device_found, displayName(device)));
     }
 
     private String displayName(@NonNull BluetoothDevice device) {
         String name = device.getName();
         return name != null ? name : device.getAddress();
+    }
+
+    private void appendLog(String message) {
+        mainHandler.post(() -> {
+            if (logText == null) {
+                return;
+            }
+            String line = "[" + logTimeFormat.format(new Date()) + "] " + message;
+            logBuffer.append(line).append('\n');
+            final int maxLength = 10_000;
+            if (logBuffer.length() > maxLength) {
+                int excess = logBuffer.length() - maxLength;
+                int cutIndex = logBuffer.indexOf("\n", excess);
+                if (cutIndex >= 0) {
+                    logBuffer.delete(0, cutIndex + 1);
+                } else {
+                    logBuffer.delete(0, excess);
+                }
+            }
+            logText.setText(logBuffer.toString());
+            logText.post(() -> {
+                if (logText.getLayout() == null) {
+                    return;
+                }
+                int scrollAmount = logText.getLayout().getLineTop(logText.getLineCount()) - logText.getHeight();
+                logText.scrollTo(0, Math.max(scrollAmount, 0));
+            });
+        });
     }
 }

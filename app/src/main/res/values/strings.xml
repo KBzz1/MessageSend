@@ -5,6 +5,7 @@
     <string name="button_disconnect">断开连接</string>
     <string name="label_nearby_devices">附近设备</string>
     <string name="label_empty_devices">尚未发现附近的蓝牙设备</string>
+    <string name="label_logs">运行日志</string>
     <string name="status_scanning">正在扫描附近的蓝牙设备…</string>
     <string name="status_device_found">找到设备：%1$s</string>
     <string name="status_connecting">正在连接 %1$s…</string>
