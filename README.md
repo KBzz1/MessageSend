@@ -1,6 +1,17 @@
-# MessageSend 项目迁移指南（精简版，WebSocket-only）
+# MessageSend 项目迁移指南（WebSocket + STOMP 协议）
 
-本文档说明如何将 MessageSend 项目的 BLE 采集与上报逻辑迁移到其他 Android 应用；当前网络通道为 HTTP（不含 Retrofit、MQTT；使用 OkHttp 直发）。
+本文档说明如何将 MessageSend 项目的 BLE 采集与上报逻辑迁移到其他 Android 应用；当前网络通道为 WebSocket（支持 STOMP 协议；使用 OkHttp）。
+
+## 最新更新：STOMP 协议支持
+
+✨ **v2.0**: 现已支持 STOMP (Simple Text Oriented Messaging Protocol) 协议！
+
+### STOMP 协议特性
+- 完整的 STOMP 1.2 协议实现
+- 双向消息通信（发送和订阅）
+- 自动连接和订阅管理
+- 服务器响应 ACK 确认
+- 详见 `/tmp/STOMP_Implementation_Summary.md`（开发文档）
 
 ## 1. 代码文件
 
@@ -11,7 +22,7 @@
 - `app/src/main/java/com/devicedata/messagesend/ble/VitalsAggregator.java`
 - `app/src/main/java/com/devicedata/messagesend/model/VitalsReading.java`
 - `app/src/main/java/com/devicedata/messagesend/PayloadFactory.java`
-- `app/src/main/java/com/devicedata/messagesend/DataHttpClient.java`
+- `app/src/main/java/com/devicedata/messagesend/DataWebSocketClient.java` ⭐ **支持 STOMP**
 
 如需重命名包名，请同步修改所有引用路径。
 
@@ -32,7 +43,7 @@
 
 确保在 Manifest 中注册承载该逻辑的 `activity`，并配置成你自身应用的界面结构。例如可将逻辑集成到自有 Activity 中，再在 Manifest 中声明该 Activity。
 
-## 3. Gradle 依赖（HTTP Only）
+## 3. Gradle 依赖（WebSocket + STOMP）
 
 在模块级 `build.gradle.kts` 中，保留以下依赖即可：
 
@@ -42,7 +53,7 @@ dependencies {
     implementation(libs.material)
     implementation(libs.activity)
     implementation(libs.constraintlayout)
-    implementation(libs.okhttp) // 用于 HTTP 直发
+    implementation(libs.okhttp) // 用于 WebSocket 和 STOMP 协议
 }
 ```
 
@@ -50,9 +61,19 @@ dependencies {
 
 ## 4. 网关与目标设备配置
 
-- HTTP 端点：`http://10.242.20.72:8080/data/{deviceId}`（POST JSON）。在 `MainActivity` 中可修改 `baseHttp`。
-- 设备 ID：使用蓝牙 MAC 地址作为 `{deviceId}`，直接使用设备真实 ID（不再做 URL 编码）。
-- 目标蓝牙设备：在 `MainActivity` 的 `TARGET_DEVICE_ADDRESS` 设置固定 MAC；如需按名称过滤，设置 `TARGET_NAME_PREFIX`。
+- **WebSocket 端点**（STOMP）：`ws://10.242.20.72:8080/data/{deviceId}`
+  - 在 `MainActivity` 中可修改 `baseWs` 变量
+  - 支持 STOMP 1.2 协议
+  - 自动订阅响应通道 `/data/pub/response`
+- **设备 ID**：使用蓝牙 MAC 地址作为 `{deviceId}`，直接使用设备真实 ID（不再做 URL 编码）
+- **目标蓝牙设备**：在 `MainActivity` 的 `TARGET_DEVICE_ADDRESS` 设置固定 MAC；如需按名称过滤，设置 `TARGET_NAME_PREFIX`
+
+### STOMP 通信流程
+1. WebSocket 连接建立
+2. 发送 STOMP CONNECT 帧（协议握手）
+3. 收到 CONNECTED 帧后订阅 `/data/pub/response`
+4. 开始 250Hz 数据发送（每个 JSON 包装为 STOMP SEND 帧）
+5. 接收来自 `/data/pub/response` 的确认消息（包含 count 和 t 字段）
 
 ## 5. 权限申请
 
@@ -63,7 +84,13 @@ dependencies {
 
 1. 在目标项目中运行应用，确认 UI、权限申请与扫描流程正常。
 2. 已连接蓝牙设备后，监测 `statusText` 文本或日志输出验证连接状态。
-3. 连接后，观察 WS 日志：出现“WS 已连接”表示通道就绪；出现“WS -> (xxx bytes)”表示数据已发送。
+3. 连接后，观察 WebSocket 和 STOMP 日志：
+   - "WS connected" - WebSocket 连接成功
+   - "STOMP -> CONNECT" - 发送 STOMP 握手
+   - "STOMP <- CONNECTED" - 服务器确认连接
+   - "STOMP -> SUBSCRIBE" - 订阅响应通道
+   - "WS -> (xxx bytes)" - 数据发送
+   - "ACK: count=x, t=y" - 收到服务器确认
 
 ### 界面布局与调试体验
 
@@ -78,13 +105,14 @@ dependencies {
     4. 日志字体/大小：修改 `logText` 的 `android:textSize` 或 `fontFamily`。
 
 
-### 数据发送策略（250Hz 单点流）
+### 数据发送策略（250Hz 单点流 + STOMP 协议）
 
 - 发送频率：固定 250Hz（每 4ms 一帧），通过调度器统一节拍发送。
 - 高频波形：血氧波形以单点字段 `boWave` 发送；ECG/呼吸波形若设备有上报，也会以最新点随帧发送（`ecg`/`respWave`）。
 - 低频字段：心率、血压、体温、血氧饱和度等低于 250Hz 的指标，按最近值在每一帧重复发送；当设备上报变更时自动更新。
-- 传输：通过 HTTP POST 发送每一帧 JSON；高频下对服务端与网络压力较大，请谨慎评估并考虑后端限流/聚合。
+- 传输：通过 WebSocket + STOMP 发送每一帧 JSON（包装为 STOMP SEND 帧）；高频下对服务端与网络压力较大，请谨慎评估并考虑后端限流/聚合。
 - 兼容性：不再使用 `boWaveSamples` 数组字段；服务端需按单点解析。
+- 响应通道：订阅 `/data/pub/response` 接收服务器确认（包含 count 和 t 字段）。
 
 
 ## 7. 其他注意事项

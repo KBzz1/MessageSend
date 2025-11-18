@@ -58,8 +58,8 @@ public class MainActivity extends AppCompatActivity {
     private BleManager bleManager;
     private TextView statusText;
     private TextView logText;
-    // 切换为 HTTP 发送客户端
-    private DataHttpClient httpClient;
+    // 切换为 WebSocket 发送客户端（支持 STOMP 协议）
+    private DataWebSocketClient wsClient;
     private String currentDeviceId;
     private ArrayAdapter<BluetoothDevice> deviceAdapter;
     private final List<BluetoothDevice> nearbyDevices = new ArrayList<>();
@@ -132,29 +132,29 @@ public class MainActivity extends AppCompatActivity {
                 String label = device.getName() != null ? device.getName() : device.getAddress();
                 statusText.setText(getString(R.string.status_connected, label));
                 appendLog(getString(R.string.status_connected, label));
-                    // 建立 WebSocket：后端接口格式 /data/{deviceId}（使用设备真实 ID，不再编码）
-                    String deviceId = device.getAddress();
-                    String baseHttp = "http://10.242.20.72:8080"; // 修改为你的网关地址
-                    httpClient = new DataHttpClient(baseHttp, deviceId, new DataHttpClient.Listener() {
-                        @Override public void onLog(String line) { appendLog(line); }
-                        @Override public void onConnected() { appendLog("HTTP 队列已就绪"); }
-                        @Override public void onDisconnected() { appendLog("HTTP 已停止"); }
-                        @Override public void onError(String error) { appendLog(error); }
-                    });
-                    httpClient.connect();
-                    currentDeviceId = deviceId;
-                    startStreaming();
+                // 建立 WebSocket：后端接口格式 ws://host:port/data/{deviceId}（使用设备真实 ID，不再编码）
+                String deviceId = device.getAddress();
+                String baseWs = "ws://10.242.20.72:8080"; // 修改为你的网关地址
+                wsClient = new DataWebSocketClient(baseWs, deviceId, new DataWebSocketClient.Listener() {
+                    @Override public void onLog(String line) { appendLog(line); }
+                    @Override public void onConnected() { appendLog("STOMP 已连接并订阅响应通道"); }
+                    @Override public void onDisconnected() { appendLog("WebSocket 已断开"); }
+                    @Override public void onError(String error) { appendLog(error); }
+                });
+                wsClient.connect();
+                currentDeviceId = deviceId;
+                startStreaming();
             }
 
             @Override
             public void onDisconnected() {
                 statusText.setText(R.string.status_disconnected);
                 appendLog(getString(R.string.status_disconnected));
-                    if (httpClient != null) {
-                        httpClient.shutdown();
-                        httpClient = null;
-                    }
-                    stopStreaming();
+                if (wsClient != null) {
+                    wsClient.shutdown();
+                    wsClient = null;
+                }
+                stopStreaming();
             }
 
             @Override
@@ -226,7 +226,7 @@ public class MainActivity extends AppCompatActivity {
             // 以固定 4ms 周期发送：复用低频字段的最近值
             String userId = TARGET_USER_ID.isEmpty() ? DEFAULT_USER_ID : TARGET_USER_ID;
             String deviceId = currentDeviceId;
-            if (deviceId == null || httpClient == null) return;
+            if (deviceId == null || wsClient == null) return;
             VitalsReading snapshot = new VitalsReading(
                     System.currentTimeMillis(),
                     latestEcgWave,
@@ -243,7 +243,7 @@ public class MainActivity extends AppCompatActivity {
             );
             Integer spo2Point = latestBoWave; // 若低频未更新，则保留上次值
             JSONObject payload = PayloadFactory.buildPayload(snapshot, userId, deviceId, spo2Point);
-            httpClient.send(payload.toString());
+            wsClient.send(payload.toString());
         }, 0, 4, TimeUnit.MILLISECONDS);
         appendLog("开始 250Hz 流式发送（4ms 周期）");
     }
@@ -315,12 +315,12 @@ public class MainActivity extends AppCompatActivity {
         bleManager.shutdown();
         networkExecutor.shutdownNow();
         stopStreaming();
-        if (httpClient != null) { httpClient.shutdown(); }
+        if (wsClient != null) { wsClient.shutdown(); }
         super.onDestroy();
     }
 
     private void addDevice(@NonNull BluetoothDevice device) {
-            if (httpClient != null) httpClient.shutdown();
+        if (wsClient != null) wsClient.shutdown();
         for (BluetoothDevice existing : nearbyDevices) {
             if (existing.getAddress().equals(device.getAddress())) {
                 return;
