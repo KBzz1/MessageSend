@@ -17,49 +17,30 @@ public final class PayloadFactory {
     }
 
     /**
-            当前上送的 JSON 结构示例（单点）：
-      {
-        "userid": "demo-001",
-        "deviceId": "34:81:F4:75:20:70",
-        "timestamp": 1762925484202,
-        "hr2": "72",
-        "bp": "18",
-        "sbpressure": "120",
-        "dbpressure": "75",
-        "mapressure": "90",
-        "bo": "98",
-        "hr": "70",
-        "temp": "36.5",
-                "ecg": 128,
-                "respWave": 64,
-                "boWave": 130
-      }
+     * 当前上送的 JSON 结构示例（单点）：
+     * {
+     *   "ecg": 100,
+     *   "resp": 25,
+     *   "bo": 95,
+     *   "hr": 75,
+     *   "temp": 36.6,
+     *   "boWave": 90,
+     *   "respWave": 90,
+     *   "timestamp": 1731420000000
+     * }
+     *
+     * 说明：
+     * - deviceId 通过 STOMP 目的地 /data/pub/{deviceId} 传递，这里不再重复
+     * - userid 如无后端要求，也不再放入 payload
      */
-        public static JSONObject buildPayload(VitalsReading reading,
-                                                                                    String userId,
-                                                                                    String deviceId,
-                                                                                    Integer spo2WavePoint) {
+    public static JSONObject buildPayload(VitalsReading reading,
+                                          String userId,
+                                          String deviceId,
+                                          Integer spo2WavePoint) {
         JSONObject root = new JSONObject();
         try {
-            root.put("userid", userId);        // 用户 ID
-            root.put("deviceId", deviceId);    // 设备 MAC 地址
             root.put("timestamp", reading.timestamp); // 时间戳（毫秒）
 
-            if (reading.ecgHeartRate != null) {
-                root.put("hr2", String.valueOf(reading.ecgHeartRate)); // ECG 计算心率
-            }
-            if (reading.respirationRate != null) {
-                root.put("bp", String.valueOf(reading.respirationRate)); // 设备提供的呼吸频率
-            }
-            if (reading.systolic != null) {
-                root.put("sbpressure", String.valueOf(reading.systolic)); // 收缩压
-            }
-            if (reading.diastolic != null) {
-                root.put("dbpressure", String.valueOf(reading.diastolic)); // 舒张压
-            }
-            if (reading.meanArterialPressure != null) {
-                root.put("mapressure", String.valueOf(reading.meanArterialPressure)); // 平均动脉压
-            }
             if (reading.bloodOxygen != null) {
                 root.put("bo", String.valueOf(reading.bloodOxygen)); // 血氧饱和度
             }
@@ -71,6 +52,9 @@ public final class PayloadFactory {
             }
             if (reading.ecgWave != null) {
                 root.put("ecg", reading.ecgWave); // ECG 波形点
+            }
+            if (reading.respirationRate != null) {
+                root.put("resp", reading.respirationRate); // 呼吸率（低频）
             }
             if (reading.respWave != null) {
                 root.put("respWave", reading.respWave); // 呼吸波形点

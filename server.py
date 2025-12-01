@@ -1,7 +1,7 @@
 """本地调试用的简易 HTTP 服务器，负责打印设备上传的生命体征数据。
 
 用 PowerShell 启动示例：
-	python server.py --host 10.242.2.207 --port 8080
+	python server.py --host 10.242.98.103 --port 8080
 """
 
 from __future__ import annotations
@@ -114,7 +114,7 @@ class LoggingRequestHandler(BaseHTTPRequestHandler):
 
 def parse_args() -> Tuple[str, int]:
 	parser = argparse.ArgumentParser(description="Log incoming HTTP requests from BLE device uploads.")
-	parser.add_argument("--host", default="10.242.2.207", help="IP address to bind (default: 10.242.2.207)")
+	parser.add_argument("--host", default="10.242.98.103", help="IP address to bind (default: 10.242.98.103)")
 	parser.add_argument("--port", type=int, default=8080, help="TCP port to listen on (default: 8080)")
 	args = parser.parse_args()
 	return args.host, args.port

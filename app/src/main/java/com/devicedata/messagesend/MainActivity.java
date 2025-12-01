@@ -58,8 +58,8 @@ public class MainActivity extends AppCompatActivity {
     private BleManager bleManager;
     private TextView statusText;
     private TextView logText;
-    // 切换为 HTTP 发送客户端
-    private DataHttpClient httpClient;
+    // 切换为 STOMP over WebSocket 客户端
+    private StompWebSocketClient stompClient;
     private String currentDeviceId;
     private ArrayAdapter<BluetoothDevice> deviceAdapter;
     private final List<BluetoothDevice> nearbyDevices = new ArrayList<>();
@@ -132,16 +132,20 @@ public class MainActivity extends AppCompatActivity {
                 String label = device.getName() != null ? device.getName() : device.getAddress();
                 statusText.setText(getString(R.string.status_connected, label));
                 appendLog(getString(R.string.status_connected, label));
-                    // 建立 WebSocket：后端接口格式 /data/{deviceId}（使用设备真实 ID，不再编码）
+                    // 建立 STOMP over WebSocket：握手地址 ws://host:port/ws
                     String deviceId = device.getAddress();
-                    String baseHttp = "http://10.242.20.72:8080"; // 修改为你的网关地址
-                    httpClient = new DataHttpClient(baseHttp, deviceId, new DataHttpClient.Listener() {
+                    String baseWs = "ws://10.242.98.103:8080"; // 服务器地址
+                    stompClient = new StompWebSocketClient(baseWs, deviceId, new StompWebSocketClient.Listener() {
                         @Override public void onLog(String line) { appendLog(line); }
-                        @Override public void onConnected() { appendLog("HTTP 队列已就绪"); }
-                        @Override public void onDisconnected() { appendLog("HTTP 已停止"); }
-                        @Override public void onError(String error) { appendLog(error); }
+                        @Override public void onConnected() { appendLog("STOMP 已连接"); }
+                        @Override public void onDisconnected() { appendLog("STOMP 已断开"); }
+                        @Override public void onError(String error) { appendLog("错误: " + error); }
+                        @Override public void onAck(String message) { /* 不打印ACK，减少日志 */ }
+                        @Override public void onSendCountUpdate(long count) {
+                            mainHandler.post(() -> statusText.setText("已发送 " + count + " 条数据"));
+                        }
                     });
-                    httpClient.connect();
+                    stompClient.connect();
                     currentDeviceId = deviceId;
                     startStreaming();
             }
@@ -150,9 +154,9 @@ public class MainActivity extends AppCompatActivity {
             public void onDisconnected() {
                 statusText.setText(R.string.status_disconnected);
                 appendLog(getString(R.string.status_disconnected));
-                    if (httpClient != null) {
-                        httpClient.shutdown();
-                        httpClient = null;
+                    if (stompClient != null) {
+                        stompClient.shutdown();
+                        stompClient = null;
                     }
                     stopStreaming();
             }
@@ -226,7 +230,7 @@ public class MainActivity extends AppCompatActivity {
             // 以固定 4ms 周期发送：复用低频字段的最近值
             String userId = TARGET_USER_ID.isEmpty() ? DEFAULT_USER_ID : TARGET_USER_ID;
             String deviceId = currentDeviceId;
-            if (deviceId == null || httpClient == null) return;
+            if (deviceId == null || stompClient == null) return;
             VitalsReading snapshot = new VitalsReading(
                     System.currentTimeMillis(),
                     latestEcgWave,
@@ -243,9 +247,9 @@ public class MainActivity extends AppCompatActivity {
             );
             Integer spo2Point = latestBoWave; // 若低频未更新，则保留上次值
             JSONObject payload = PayloadFactory.buildPayload(snapshot, userId, deviceId, spo2Point);
-            httpClient.send(payload.toString());
+            stompClient.send(payload.toString());
         }, 0, 4, TimeUnit.MILLISECONDS);
-        appendLog("开始 250Hz 流式发送（4ms 周期）");
+        appendLog("开始数据发送（250Hz）");
     }
 
     private void stopStreaming() {
@@ -315,12 +319,12 @@ public class MainActivity extends AppCompatActivity {
         bleManager.shutdown();
         networkExecutor.shutdownNow();
         stopStreaming();
-        if (httpClient != null) { httpClient.shutdown(); }
+        if (stompClient != null) { stompClient.shutdown(); }
         super.onDestroy();
     }
 
     private void addDevice(@NonNull BluetoothDevice device) {
-            if (httpClient != null) httpClient.shutdown();
+            if (stompClient != null) stompClient.shutdown();
         for (BluetoothDevice existing : nearbyDevices) {
             if (existing.getAddress().equals(device.getAddress())) {
                 return;

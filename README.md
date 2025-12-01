@@ -1,6 +1,6 @@
 # MessageSend 项目迁移指南（精简版，WebSocket-only）
 
-本文档说明如何将 MessageSend 项目的 BLE 采集与上报逻辑迁移到其他 Android 应用；当前网络通道为 HTTP（不含 Retrofit、MQTT；使用 OkHttp 直发）。
+本文档说明如何将 MessageSend 项目的 BLE 采集与上报逻辑迁移到其他 Android 应用；当前网络通道为 WebSocket（仅依赖 OkHttp，已移除 HTTP/Retrofit/MQTT）。
 
 ## 1. 代码文件
 
@@ -11,7 +11,7 @@
 - `app/src/main/java/com/devicedata/messagesend/ble/VitalsAggregator.java`
 - `app/src/main/java/com/devicedata/messagesend/model/VitalsReading.java`
 - `app/src/main/java/com/devicedata/messagesend/PayloadFactory.java`
-- `app/src/main/java/com/devicedata/messagesend/DataHttpClient.java`
+- `app/src/main/java/com/devicedata/messagesend/DataWebSocketClient.java`
 
 如需重命名包名，请同步修改所有引用路径。
 
@@ -32,7 +32,7 @@
 
 确保在 Manifest 中注册承载该逻辑的 `activity`，并配置成你自身应用的界面结构。例如可将逻辑集成到自有 Activity 中，再在 Manifest 中声明该 Activity。
 
-## 3. Gradle 依赖（HTTP Only）
+## 3. Gradle 依赖（WebSocket Only）
 
 在模块级 `build.gradle.kts` 中，保留以下依赖即可：
 
@@ -42,7 +42,7 @@ dependencies {
     implementation(libs.material)
     implementation(libs.activity)
     implementation(libs.constraintlayout)
-    implementation(libs.okhttp) // 用于 HTTP 直发
+    implementation(libs.okhttp) // 用于 WebSocket 客户端
 }
 ```
 
@@ -50,7 +50,7 @@ dependencies {
 
 ## 4. 网关与目标设备配置
 
-- HTTP 端点：`http://10.242.20.72:8080/data/{deviceId}`（POST JSON）。在 `MainActivity` 中可修改 `baseHttp`。
+- WebSocket 端点：`ws://10.242.98.103:8080/data/{deviceId}`。在 `MainActivity` 中可修改 `baseWs`。
 - 设备 ID：使用蓝牙 MAC 地址作为 `{deviceId}`，直接使用设备真实 ID（不再做 URL 编码）。
 - 目标蓝牙设备：在 `MainActivity` 的 `TARGET_DEVICE_ADDRESS` 设置固定 MAC；如需按名称过滤，设置 `TARGET_NAME_PREFIX`。
 
@@ -83,8 +83,14 @@ dependencies {
 - 发送频率：固定 250Hz（每 4ms 一帧），通过调度器统一节拍发送。
 - 高频波形：血氧波形以单点字段 `boWave` 发送；ECG/呼吸波形若设备有上报，也会以最新点随帧发送（`ecg`/`respWave`）。
 - 低频字段：心率、血压、体温、血氧饱和度等低于 250Hz 的指标，按最近值在每一帧重复发送；当设备上报变更时自动更新。
-- 传输：通过 HTTP POST 发送每一帧 JSON；高频下对服务端与网络压力较大，请谨慎评估并考虑后端限流/聚合。
+- 传输：通过 WebSocket 发送每一帧 JSON，客户端仅维护一个轻量级发送队列；连接就绪自动 flush。
 - 兼容性：不再使用 `boWaveSamples` 数组字段；服务端需按单点解析。
+
+#### 服务端批量响应（ACK）
+
+- 网关会每秒回传一次确认：`{"count":250,"t":1731420000000}`。
+- `count` 表示已处理的消息数，`t` 为服务器确认时间戳（毫秒）。
+- `DataWebSocketClient` 会自动识别该 JSON 并打印日志 `WS <- ACK count=...`，方便前端观察吞吐。
 
 
 ## 7. 其他注意事项
